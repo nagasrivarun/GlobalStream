@@ -1,10 +1,7 @@
 "use server"
 
-import { neon } from "@neondatabase/serverless"
 import { getSupabaseServerClient } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
-
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
 // Get the current user ID from the session
 async function getCurrentUserId() {
@@ -24,18 +21,21 @@ async function getCurrentUserId() {
 export async function addToWatchlist(contentId: string) {
   try {
     const userId = await getCurrentUserId()
+    const supabase = getSupabaseServerClient()
 
     // Check if already in watchlist
-    const existingItem = await sql`
-      SELECT id FROM user_watchlist 
-      WHERE user_id = ${userId} AND content_id = ${contentId}
-    `
+    const { data: existingItem } = await supabase
+      .from("user_watchlist")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("content_id", contentId)
+      .single()
 
-    if (existingItem.length === 0) {
-      await sql`
-        INSERT INTO user_watchlist (user_id, content_id)
-        VALUES (${userId}, ${contentId})
-      `
+    if (!existingItem) {
+      await supabase.from("user_watchlist").insert({
+        user_id: userId,
+        content_id: contentId,
+      })
     }
 
     revalidatePath("/watchlist")
@@ -52,11 +52,9 @@ export async function addToWatchlist(contentId: string) {
 export async function removeFromWatchlist(contentId: string) {
   try {
     const userId = await getCurrentUserId()
+    const supabase = getSupabaseServerClient()
 
-    await sql`
-      DELETE FROM user_watchlist
-      WHERE user_id = ${userId} AND content_id = ${contentId}
-    `
+    await supabase.from("user_watchlist").delete().eq("user_id", userId).eq("content_id", contentId)
 
     revalidatePath("/watchlist")
     revalidatePath(`/content/${contentId}`)
@@ -72,13 +70,15 @@ export async function removeFromWatchlist(contentId: string) {
 export async function isInWatchlist(contentId: string) {
   try {
     const userId = await getCurrentUserId()
+    const supabase = getSupabaseServerClient()
 
-    const result = await sql`
-      SELECT id FROM user_watchlist 
-      WHERE user_id = ${userId} AND content_id = ${contentId}
-    `
+    const { data } = await supabase
+      .from("user_watchlist")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("content_id", contentId)
 
-    return { success: true, isInWatchlist: result.length > 0 }
+    return { success: true, isInWatchlist: data && data.length > 0 }
   } catch (error: any) {
     console.error("Error checking watchlist:", error)
     return { success: false, isInWatchlist: false }
@@ -89,16 +89,15 @@ export async function isInWatchlist(contentId: string) {
 export async function getWatchlist() {
   try {
     const userId = await getCurrentUserId()
+    const supabase = getSupabaseServerClient()
 
-    const watchlist = await sql`
-      SELECT c.* 
-      FROM content c
-      JOIN user_watchlist w ON c.id = w.content_id
-      WHERE w.user_id = ${userId}
-      ORDER BY w.added_at DESC
-    `
+    const { data: watchlist } = await supabase
+      .from("content")
+      .select("*")
+      .in("id", supabase.from("user_watchlist").select("content_id").eq("user_id", userId))
+      .order("created_at", { ascending: false })
 
-    return { success: true, data: watchlist }
+    return { success: true, data: watchlist || [] }
   } catch (error: any) {
     console.error("Error fetching watchlist:", error)
     return { success: false, data: [] }
