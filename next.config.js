@@ -26,7 +26,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Remove the custom_key - not needed
   env: {
     TMDB_API_KEY: process.env.TMDB_API_KEY,
   },
