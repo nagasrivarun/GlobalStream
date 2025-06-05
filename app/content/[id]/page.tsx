@@ -3,21 +3,20 @@ import { MainNav } from "@/components/navigation/main-nav"
 import { Button } from "@/components/ui/button"
 import { WatchlistButton } from "@/components/watchlist/watchlist-button"
 import { Play, Calendar, Clock } from "lucide-react"
-import { neon } from "@neondatabase/serverless"
-
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+import { getSupabaseServerClient } from "@/lib/supabase"
 
 async function getContentDetails(id: string) {
   try {
-    const content = await sql`
-      SELECT * FROM content WHERE id = ${id}
-    `
+    const supabase = getSupabaseServerClient()
 
-    if (!content || content.length === 0) {
+    const { data: content, error } = await supabase.from("content").select("*").eq("id", id).single()
+
+    if (error || !content) {
+      console.error("Error fetching content details:", error)
       return null
     }
 
-    return content[0]
+    return content
   } catch (error) {
     console.error("Error fetching content details:", error)
     return null
