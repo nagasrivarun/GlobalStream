@@ -1,15 +1,17 @@
 import type React from "react"
-import MainNav from "@/components/main-nav"
+import VoiceAssistantWrapper from "@/components/voice-assistant-wrapper"
 
-export default function MainLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   return (
-    <div className="min-h-screen bg-black text-white">
-      <MainNav />
-      {children}
-    </div>
+    <html lang="en">
+      <body>
+        {children}
+        <VoiceAssistantWrapper />
+      </body>
+    </html>
   )
 }
