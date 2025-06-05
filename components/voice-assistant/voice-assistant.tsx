@@ -1,12 +1,19 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Mic, MicOff, Volume2, X } from "lucide-react"
+import { Mic, MicOff, Volume2, X, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import SpeechRecognition from "speech-recognition"
+
+// Polyfill for older browsers
+declare global {
+  interface Window {
+    SpeechRecognition: any
+    webkitSpeechRecognition: any
+  }
+}
 
 export default function VoiceAssistant() {
   const [isListening, setIsListening] = useState(false)
@@ -14,44 +21,101 @@ export default function VoiceAssistant() {
   const [response, setResponse] = useState("")
   const [isOpen, setIsOpen] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const [isSupported, setIsSupported] = useState(false)
+  const [browserInfo, setBrowserInfo] = useState("")
+  const recognitionRef = useRef<any>(null)
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    // Initialize speech recognition
-    if (typeof window !== "undefined") {
-      recognitionRef.current = new SpeechRecognition()
-      recognitionRef.current.continuous = true
-      recognitionRef.current.interimResults = true
+    // Check browser support
+    const checkSupport = () => {
+      if (typeof window === "undefined") return false
 
-      recognitionRef.current.onresult = (event) => {
-        const transcript = Array.from(event.results)
-          .map((result) => result[0])
-          .map((result) => result.transcript)
-          .join("")
+      const userAgent = navigator.userAgent
 
-        setTranscript(transcript)
+      // Detect Internet Explorer
+      if (userAgent.indexOf("MSIE") !== -1 || userAgent.indexOf("Trident/") !== -1) {
+        setBrowserInfo("Internet Explorer is not supported. Please use Chrome, Edge, Firefox, or Safari.")
+        return false
       }
 
-      recognitionRef.current.onend = () => {
-        if (isListening) {
-          recognitionRef.current?.start()
+      // Check for speech recognition
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+
+      if (!SpeechRecognition) {
+        setBrowserInfo("Your browser doesn't support voice recognition. Try Chrome for the best experience.")
+        return false
+      }
+
+      // Initialize speech recognition
+      try {
+        recognitionRef.current = new SpeechRecognition()
+        recognitionRef.current.continuous = true
+        recognitionRef.current.interimResults = true
+        recognitionRef.current.lang = "en-US"
+
+        recognitionRef.current.onresult = (event: any) => {
+          const transcript = Array.from(event.results)
+            .map((result: any) => result[0])
+            .map((result: any) => result.transcript)
+            .join("")
+
+          setTranscript(transcript)
         }
+
+        recognitionRef.current.onend = () => {
+          if (isListening) {
+            try {
+              recognitionRef.current?.start()
+            } catch (error) {
+              console.error("Speech recognition restart failed:", error)
+              setIsListening(false)
+            }
+          }
+        }
+
+        recognitionRef.current.onerror = (event: any) => {
+          console.error("Speech recognition error:", event.error)
+          if (event.error === "not-allowed") {
+            setResponse("Microphone access denied. Please allow microphone access and try again.")
+          }
+        }
+
+        return true
+      } catch (error) {
+        console.error("Failed to initialize speech recognition:", error)
+        setBrowserInfo("Failed to initialize voice recognition. Your browser may not support this feature.")
+        return false
       }
     }
 
+    setIsSupported(checkSupport())
+
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop()
+        try {
+          recognitionRef.current.stop()
+        } catch (error) {
+          console.error("Error stopping speech recognition:", error)
+        }
       }
     }
   }, [isListening])
 
   const toggleListening = () => {
+    if (!isSupported) {
+      setResponse("Voice assistant is not supported in your browser.")
+      return
+    }
+
     if (isListening) {
       setIsListening(false)
-      recognitionRef.current?.stop()
+      try {
+        recognitionRef.current?.stop()
+      } catch (error) {
+        console.error("Error stopping recognition:", error)
+      }
       if (transcript) {
         processCommand(transcript)
       }
@@ -59,7 +123,13 @@ export default function VoiceAssistant() {
       setTranscript("")
       setResponse("")
       setIsListening(true)
-      recognitionRef.current?.start()
+      try {
+        recognitionRef.current?.start()
+      } catch (error) {
+        console.error("Error starting recognition:", error)
+        setResponse("Failed to start voice recognition. Please check your microphone permissions.")
+        setIsListening(false)
+      }
     }
   }
 
@@ -68,60 +138,30 @@ export default function VoiceAssistant() {
     const lowerCommand = command.toLowerCase()
 
     try {
-      // Basic commands
+      // Navigation commands
       if (lowerCommand.includes("home") || lowerCommand.includes("go home")) {
         setResponse("Taking you to the home page")
         setTimeout(() => router.push("/"), 1500)
       } else if (lowerCommand.includes("movies") || lowerCommand.includes("show movies")) {
         setResponse("Taking you to movies")
         setTimeout(() => router.push("/browse/movies"), 1500)
-      } else if (lowerCommand.includes("tv") || lowerCommand.includes("shows") || lowerCommand.includes("tv shows")) {
+      } else if (lowerCommand.includes("tv") || lowerCommand.includes("shows")) {
         setResponse("Taking you to TV shows")
         setTimeout(() => router.push("/browse/shows"), 1500)
       } else if (lowerCommand.includes("my list") || lowerCommand.includes("watchlist")) {
         setResponse("Opening your watchlist")
         setTimeout(() => router.push("/my-list"), 1500)
-      } else if (lowerCommand.includes("profile") || lowerCommand.includes("my profile")) {
-        setResponse("Opening your profile")
-        setTimeout(() => router.push("/profile"), 1500)
-      }
-      // Search commands
-      else if (lowerCommand.includes("search for") || lowerCommand.includes("find")) {
+      } else if (lowerCommand.includes("search for") || lowerCommand.includes("find")) {
         const searchTerm = lowerCommand.replace("search for", "").replace("find", "").trim()
         if (searchTerm) {
           setResponse(`Searching for "${searchTerm}"`)
           setTimeout(() => router.push(`/search?q=${encodeURIComponent(searchTerm)}`), 1500)
-        } else {
-          setResponse("What would you like to search for?")
         }
-      }
-      // Play content
-      else if (lowerCommand.includes("play") || lowerCommand.includes("watch")) {
-        const title = lowerCommand.replace("play", "").replace("watch", "").trim()
-        if (title) {
-          setResponse(`Looking for "${title}" to play`)
-
-          // Search for content with this title
-          const { data } = await supabase.from("content").select("id, title").ilike("title", `%${title}%`).limit(1)
-
-          if (data && data.length > 0) {
-            setResponse(`Playing "${data[0].title}"`)
-            setTimeout(() => router.push(`/watch/${data[0].id}`), 1500)
-          } else {
-            setResponse(`Sorry, I couldn't find "${title}"`)
-          }
-        } else {
-          setResponse("What would you like to watch?")
-        }
-      }
-      // Help command
-      else if (lowerCommand.includes("help") || lowerCommand.includes("what can you do")) {
+      } else if (lowerCommand.includes("help")) {
         setResponse(
-          "I can help you navigate GlobalStream. Try saying: 'go home', 'show movies', 'search for action', 'play Stranger Things', or 'open my list'",
+          "I can help you navigate GlobalStream. Try saying: 'go home', 'show movies', 'search for action', or 'open my list'",
         )
-      }
-      // Fallback
-      else {
+      } else {
         setResponse("I'm not sure how to help with that. Try asking for movies, TV shows, or search for a title.")
       }
     } catch (error) {
@@ -134,15 +174,20 @@ export default function VoiceAssistant() {
 
   const speakResponse = () => {
     if ("speechSynthesis" in window && response) {
-      const utterance = new SpeechSynthesisUtterance(response)
-      window.speechSynthesis.speak(utterance)
+      try {
+        const utterance = new SpeechSynthesisUtterance(response)
+        utterance.rate = 0.9
+        utterance.pitch = 1
+        window.speechSynthesis.speak(utterance)
+      } catch (error) {
+        console.error("Text-to-speech error:", error)
+      }
     }
   }
 
-  const closeAssistant = () => {
-    setIsOpen(false)
-    setIsListening(false)
-    recognitionRef.current?.stop()
+  // Don't show the assistant if not supported
+  if (!isSupported && !isOpen) {
+    return null
   }
 
   if (!isOpen) {
@@ -151,8 +196,9 @@ export default function VoiceAssistant() {
         onClick={() => setIsOpen(true)}
         className="fixed bottom-4 right-4 rounded-full w-12 h-12 bg-red-600 hover:bg-red-700 shadow-lg"
         size="icon"
+        disabled={!isSupported}
       >
-        <Mic className="h-6 w-6" />
+        {isSupported ? <Mic className="h-6 w-6" /> : <AlertCircle className="h-6 w-6" />}
       </Button>
     )
   }
@@ -161,44 +207,54 @@ export default function VoiceAssistant() {
     <Card className="fixed bottom-4 right-4 w-80 p-4 shadow-lg bg-gray-900 border-gray-800 text-white">
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-semibold">GlobalStream Assistant</h3>
-        <Button variant="ghost" size="icon" onClick={closeAssistant}>
+        <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
           <X className="h-4 w-4" />
         </Button>
       </div>
 
-      <div className="space-y-4">
-        {transcript && (
-          <div className="bg-gray-800 p-3 rounded-lg text-sm">
-            <p className="font-semibold text-xs text-gray-400">You said:</p>
-            <p>{transcript}</p>
+      {!isSupported ? (
+        <div className="bg-yellow-900/30 p-3 rounded-lg text-sm">
+          <div className="flex items-center space-x-2 mb-2">
+            <AlertCircle className="h-4 w-4 text-yellow-400" />
+            <p className="font-semibold text-yellow-400">Not Supported</p>
           </div>
-        )}
-
-        {response && (
-          <div className="bg-red-900/30 p-3 rounded-lg text-sm">
-            <div className="flex justify-between">
-              <p className="font-semibold text-xs text-gray-400">Assistant:</p>
-              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={speakResponse}>
-                <Volume2 className="h-3 w-3" />
-              </Button>
-            </div>
-            <p>{response}</p>
-          </div>
-        )}
-
-        <div className="flex justify-center">
-          <Button
-            onClick={toggleListening}
-            disabled={isProcessing}
-            className={`rounded-full w-12 h-12 ${
-              isListening ? "bg-red-600 hover:bg-red-700" : "bg-gray-700 hover:bg-gray-600"
-            }`}
-            size="icon"
-          >
-            {isListening ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
-          </Button>
+          <p className="text-yellow-200">{browserInfo}</p>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-4">
+          {transcript && (
+            <div className="bg-gray-800 p-3 rounded-lg text-sm">
+              <p className="font-semibold text-xs text-gray-400">You said:</p>
+              <p>{transcript}</p>
+            </div>
+          )}
+
+          {response && (
+            <div className="bg-red-900/30 p-3 rounded-lg text-sm">
+              <div className="flex justify-between">
+                <p className="font-semibold text-xs text-gray-400">Assistant:</p>
+                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={speakResponse}>
+                  <Volume2 className="h-3 w-3" />
+                </Button>
+              </div>
+              <p>{response}</p>
+            </div>
+          )}
+
+          <div className="flex justify-center">
+            <Button
+              onClick={toggleListening}
+              disabled={isProcessing}
+              className={`rounded-full w-12 h-12 ${
+                isListening ? "bg-red-600 hover:bg-red-700" : "bg-gray-700 hover:bg-gray-600"
+              }`}
+              size="icon"
+            >
+              {isListening ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   )
 }

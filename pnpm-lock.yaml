@@ -179,9 +179,6 @@ importers:
       sonner:
         specifier: ^1.7.1
         version: 1.7.1(react-dom@18.0.0(react@18.0.0))(react@18.0.0)
-      speech-recognition:
-        specifier: latest
-        version: 0.0.1
       stripe:
         specifier: latest
         version: 18.2.1(@types/node@22.0.0)
@@ -2012,9 +2009,6 @@ packages:
   source-map@0.6.1:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
-
-  speech-recognition@0.0.1:
-    resolution: {integrity: sha512-OIYftveS+jDg4T6rsRO4UIyrsD6At7jjyZF5vEoCkP0GjLTqputvspxAWCJ7o1okeFaU5/z4PcpQmHsO5OHrMg==}
 
   streamsearch@1.1.0:
     resolution: {integrity: sha512-Mcc5wHehp9aXz1ax6bZUyY5afg9u2rv5cqQI3mRrYkGC8rW2hM02jWuwjtL++LS5qinSyhj2QfLyNsuc+VsExg==}
@@ -3973,8 +3967,6 @@ snapshots:
   source-map-js@1.2.1: {}
 
   source-map@0.6.1: {}
-
-  speech-recognition@0.0.1: {}
 
   streamsearch@1.1.0: {}
 
